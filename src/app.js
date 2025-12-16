@@ -17,7 +17,7 @@ const app = express();
 // --- Middleware ---
 // Enable Cross-Origin Resource Sharing for all routes
 app.use(cors({
-    origin: 'http://localhost:3000', // The origin of your Next.js frontend
+    origin: 'https://mvoi-ratel-situation-room.vercel.com', // The origin of your Next.js frontend
     credentials: true // Important for sending cookies (for refresh tokens)
 }));
 
