@@ -16,8 +16,9 @@ const app = express();
 
 // --- Middleware ---
 // Enable Cross-Origin Resource Sharing for all routes
+// Use environment variables for production and fallback for development
 const allowedOrigins = [
-    'https://mvoi-ratel-situation-room.vercel.app', // Your Vercel frontend
+    process.env.FRONTEND_URL, // Your Vercel frontend URL from environment variables
     'http://localhost:3000' // Your local development frontend
 ];
 app.use(cors({
