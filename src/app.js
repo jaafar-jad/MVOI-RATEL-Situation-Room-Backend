@@ -20,7 +20,7 @@ const app = express();
 const allowedOrigins = [
     process.env.FRONTEND_URL, // Your Vercel frontend URL from environment variables
     'http://localhost:3000' // Your local development frontend
-];
+].filter(Boolean); // Filter out any undefined/null/empty string values from the array
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
