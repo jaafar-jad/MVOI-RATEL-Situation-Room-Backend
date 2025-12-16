@@ -4,9 +4,9 @@ import { verifyJWT } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-// As per the PRD, the frontend will handle the Google Sign-In and send us an ID token.
-// Our backend will verify this token and then create a session.
-router.post('/oauth/google', googleOAuthHandler);
+// The frontend sends an ID token from Google. The backend verifies it and creates a session.
+// The path is '/google' to match the frontend API call to '/api/v1/auth/google'.
+router.post('/google', googleOAuthHandler);
 router.post('/refresh', refreshAccessTokenHandler);
 
 // This is a protected route. It requires a valid access token.
