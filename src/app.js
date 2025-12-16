@@ -16,8 +16,18 @@ const app = express();
 
 // --- Middleware ---
 // Enable Cross-Origin Resource Sharing for all routes
+const allowedOrigins = [
+    'https://mvoi-ratel-situation-room.vercel.app', // Your Vercel frontend
+    'http://localhost:3000' // Your local development frontend
+];
 app.use(cors({
-    origin: 'https://mvoi-ratel-situation-room.vercel.com', // The origin of your Next.js frontend
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true // Important for sending cookies (for refresh tokens)
 }));
 
