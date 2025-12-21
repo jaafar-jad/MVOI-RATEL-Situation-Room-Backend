@@ -1,4 +1,3 @@
-// src/app.js
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -7,23 +6,26 @@ import userRouter from './routes/user.routes.js';
 import complaintRouter from './routes/complaint.routes.js';
 import adminRouter from './routes/admin.routes.js';
 import notificationRouter from './routes/notification.routes.js';
-import publicRouter from './routes/public.routes.js'; // Import the new public router
-import appealRouter from './routes/appeal.routes.js'; // Import the new appeal router
-import invitationRouter from './routes/invitation.routes.js'; // Import invitation router
+import publicRouter from './routes/public.routes.js';
+import appealRouter from './routes/appeal.routes.js';
+import invitationRouter from './routes/invitation.routes.js';
 
 // Create an Express application
 const app = express();
 
 // --- Middleware ---
 // Enable Cross-Origin Resource Sharing for all routes
-// Use environment variables for production and fallback for development
 const allowedOrigins = [
-    process.env.FRONTEND_URL, // Your Vercel frontend URL from environment variables
-    'http://localhost:3000' // Your local development frontend
-].filter(Boolean); // Filter out any undefined/null/empty string values from the array
+    'https://mvoi-ratel-situation-room.vercel.app', // Your Vercel frontend
+    'http://localhost:3000', // Local development
+    process.env.FRONTEND_URL // Fallback from env variables
+].filter(Boolean);
+
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
@@ -37,23 +39,23 @@ app.use(express.json());
 // Parse cookies
 app.use(cookieParser());
 
-
-// --- Basic Test Route ---
-app.get('/api/v1', (req, res) => {
-    res.status(200).json({
-        status: 'success',
-        message: 'Advocacy and Dispute Resolution API is running!'
-    });
+// --- Routes ---
+// Root route to fix "Cannot GET /"
+app.get('/', (req, res) => {
+    res.status(200).send('MVOI Ratel Situation Room API is running 🚀');
 });
 
-// --- API Routes ---
+app.get('/api/v1', (req, res) => {
+    res.status(200).json({ status: 'success', message: 'Advocacy and Dispute Resolution API is running!' });
+});
+
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/complaints', complaintRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/notifications', notificationRouter);
-app.use('/api/v1/public', publicRouter); // Register the new public routes
-app.use('/api/v1/appeals', appealRouter); // Register the new appeal routes
-app.use('/api/v1/invitations', invitationRouter); // Register invitation routes
+app.use('/api/v1/public', publicRouter);
+app.use('/api/v1/appeals', appealRouter);
+app.use('/api/v1/invitations', invitationRouter);
 
 export default app;
