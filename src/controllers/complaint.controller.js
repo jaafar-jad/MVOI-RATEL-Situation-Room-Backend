@@ -10,19 +10,33 @@ import cloudinary from '../config/cloudinary.js';
  * @access Private (Verified Users only)
  */
 export const createComplaint = async (req, res) => {
-    const { title, category, desiredAction, vendorDetails, narrative, status, evidenceUrls } = req.body;
+    const { type = 'Case' } = req.body; // Default to 'Case' if type is not provided
+
+    // Delegate to the appropriate handler based on the 'type'
+    if (type === 'MVOI') {
+        return createMvoiApplication(req, res);
+    }
+    
+    return createCase(req, res);
+};
+
+/**
+ * @description Helper function to create a standard 'Case'.
+ */
+const createCase = async (req, res) => {
+    const { title, category, desiredAction, vendorDetails, narrative, status, evidenceUrls, contactNumber } = req.body;
     const isDraft = status === 'Draft';
 
     let settings = await AppSettings.findOne();
     if (!settings) settings = await AppSettings.create({}); // Ensure settings exist
 
-    // For final submission, enforce all rules.
+    // User must be verified.
+    if (req.user.verificationStatus !== 'Verified') {
+        return res.status(403).json({ message: 'Forbidden. Your identity must be verified before submitting a complaint.' });
+    }
+
+    // For final submission (not a draft), enforce all rules.
     if (!isDraft) {
-        // 1. User must be verified.
-        if (req.user.verificationStatus !== 'Verified') {
-            return res.status(403).json({ message: 'Forbidden. Your identity must be verified before submitting a complaint.' });
-        }
-        // 2. All fields are required.
         if (!title || !category || !desiredAction || !narrative) {
             return res.status(400).json({ message: 'Title, category, desired action, and narrative are required fields.' });
         }
@@ -41,8 +55,9 @@ export const createComplaint = async (req, res) => {
             const complaintToSave = new Complaint({
                 title,
                 caseRef,
+                type: 'Case', // Explicitly set the type
                 complainant: req.user._id,
-                contactNumber: req.body.contactNumber, // Added contactNumber from req.body
+                contactNumber: contactNumber,
                 category,
                 desiredAction,
                 vendorDetails,
@@ -90,6 +105,86 @@ export const createComplaint = async (req, res) => {
         }
     }
 };
+
+/**
+ * @description Submit a new MVOI initiative application by an authenticated user.
+ * @route POST /api/v1/complaints/mvoi
+ * @access Private (Verified Users only)
+ */
+const createMvoiApplication = async (req, res) => {
+    const {
+        title,
+        applicantType,
+        initiativeCategory,
+        locationDetails,
+        beneficiaryCount,
+        narrative,
+        applicantName,
+        applicantEmail,
+        applicantPhone,
+        evidenceUrls,
+        status,
+    } = req.body;
+
+    const isDraft = status === 'Draft';
+
+    // Basic validation
+    if (!isDraft) {
+        if (!title || !initiativeCategory || !narrative) {
+            return res.status(400).json({ message: 'Title, category, and narrative are required.' });
+        }
+    
+        if (!applicantName || !applicantEmail || !applicantPhone) {
+            return res.status(400).json({ message: 'Applicant contact details (name, email, phone) are required.' });
+        }
+    } else {
+        if (!title) {
+            return res.status(400).json({ message: 'A title is required to save a draft.' });
+        }
+    }
+
+    // User must be verified to submit an MVOI application
+    if (req.user.verificationStatus !== 'Verified') {
+        return res.status(403).json({ message: 'Forbidden. Your identity must be verified before submitting an application.' });
+    }
+
+    try {
+        const caseRef = await generateCaseRef();
+
+        const mvoiApplication = new Complaint({
+            caseRef,
+            title,
+            type: 'MVOI',
+            narrative,
+            initiativeCategory,
+            applicantType,
+            locationDetails,
+            beneficiaryCount,
+            evidenceUrls: evidenceUrls || [],
+            complainant: req.user._id, // Attach the logged-in user
+            // Storing separate MVOI contact info in the vendorDetails field for schema simplicity
+            vendorDetails: {
+                name: applicantName, contact: `${applicantEmail}, ${applicantPhone}`
+            },
+            status: isDraft ? 'Draft' : 'Pending Review',
+            statusHistory: [{ status: isDraft ? 'Draft' : 'Pending Review', timestamp: new Date() }],
+        });
+
+        await mvoiApplication.save();
+
+        await notifyAdmins(
+            `New MVOI ${isDraft ? 'draft' : 'application'} '${caseRef}' submitted for ${initiativeCategory} by ${req.user.fullName}.`,
+            `/admin/complaint/${mvoiApplication._id}`
+        );
+
+        return res.status(201).json({ complaint: mvoiApplication, message: 'Your application has been submitted successfully.' });
+    } catch (error) {
+        console.error('Error creating MVOI application:', error);
+        return res.status(500).json({ message: 'Failed to submit application.', error: error.message });
+    }
+};
+
+
 /**
  * @description Get all complaints for the authenticated user.
  * @route GET /api/v1/complaints

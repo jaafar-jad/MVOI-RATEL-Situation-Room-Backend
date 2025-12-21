@@ -70,15 +70,26 @@ export const getComplaintStats = async (req, res) => {
 export const getComplaints = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const { search, category, desiredAction, status, sortBy, sortOrder } = req.query;
+    const { search, category, desiredAction, status, sortBy, sortOrder, type } = req.query; // Added 'type'
     const skip = (page - 1) * limit;
 
     try {
         let aggregationPipeline = [];
         const complaintMatchStage = {};
 
+        // --- NEW: Filter by type ('Case' or 'MVOI') ---
+        complaintMatchStage.type = type || 'Case'; // Default to 'Case' if no type is specified
+
         // Filter by status if provided, otherwise fetch all. Defaults to 'Pending Review' if no status is given.
-        complaintMatchStage.status = status || 'Pending Review';
+        if (status) {
+            if (status.includes(',')) {
+                complaintMatchStage.status = { $in: status.split(',') };
+            } else {
+                complaintMatchStage.status = status;
+            }
+        } else {
+            complaintMatchStage.status = 'Pending Review';
+        }
 
         if (category) {
             complaintMatchStage.category = category;
@@ -631,6 +642,7 @@ export const addNote = async (req, res) => {
         return res.status(500).json({ message: 'Error adding note.', error: error.message });
     }
 };
+
 /**
  * @description Get all users with filtering and pagination for the UMC.
  * @route GET /api/v1/admin/users
@@ -645,19 +657,28 @@ export const getAllUsers = async (req, res) => {
     try {
         const matchStage = {};
 
+        // Apply filters
         if (role) matchStage.role = role;
         if (verificationStatus) matchStage.verificationStatus = verificationStatus;
         if (status) matchStage.status = status;
 
+        // --- ROBUST PARTIAL SEARCH LOGIC ---
         if (search) {
-            matchStage.$text = { $search: search };
+            // Creating a case-insensitive regex for partial matches
+            const searchRegex = new RegExp(search, 'i');
+            
+            matchStage.$or = [
+                { fullName: { $regex: searchRegex } },
+                { email: { $regex: searchRegex } }
+            ];
         }
 
         const sortStage = {};
         sortStage[sortBy || 'createdAt'] = sortOrder === 'asc' ? 1 : -1;
 
+        // Fetch users
         const users = await User.find(matchStage)
-            .select('-refreshToken')
+            .select('-refreshToken -password') // Exclude sensitive data
             .sort(sortStage)
             .skip(skip)
             .limit(limit);
@@ -673,7 +694,10 @@ export const getAllUsers = async (req, res) => {
         });
 
     } catch (error) {
-        return res.status(500).json({ message: 'Error fetching users.', error: error.message });
+        return res.status(500).json({ 
+            message: 'Error fetching users.', 
+            error: error.message 
+        });
     }
 };
 

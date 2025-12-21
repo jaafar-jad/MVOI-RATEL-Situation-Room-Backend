@@ -117,11 +117,7 @@ export const googleOAuthHandler = async (req, res) => {
             .json({ user: userResponse, accessToken });
 
     } catch (error) {
-        // If the error is from google-auth-library, it's a token validation issue.
-        if (error.code === 'ERR_OSSL_PEM_NO_START_LINE' || error.message.includes('Invalid token')) {
-            return res.status(401).json({ message: 'Invalid or expired Google token.' });
-        }
-        console.error('Google OAuth Handler Error:', error);
+        console.error('Google OAuth Error:', error);
         return res.status(500).json({ message: 'Authentication failed. Please try again.' });
     }
 };
@@ -131,11 +127,6 @@ export const googleOAuthHandler = async (req, res) => {
  */
 export const refreshAccessTokenHandler = async (req, res) => {
     const incomingRefreshToken = req.cookies.refreshToken;
-    const cookieOptions = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-    };
 
     if (!incomingRefreshToken) {
         return res.status(401).json({ message: 'Unauthorized. No refresh token provided.' });
@@ -156,10 +147,7 @@ export const refreshAccessTokenHandler = async (req, res) => {
         if (!isTokenValid) {
             // This is a security risk - someone might be trying to use an old/stolen token.
             // For enhanced security, you could invalidate all user's tokens here.
-            return res
-                .status(401)
-                .clearCookie('refreshToken', cookieOptions)
-                .json({ message: 'Invalid refresh token. Please log in again.' });
+            return res.status(401).json({ message: 'Invalid refresh token.' });
         }
 
         // Generate new tokens (token rotation)
@@ -170,17 +158,20 @@ export const refreshAccessTokenHandler = async (req, res) => {
         user.refreshToken = hashedRefreshToken;
         await user.save({ validateBeforeSave: false });
 
+        const options = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+        };
+
         return res
             .status(200)
-            .cookie('refreshToken', newRefreshToken, cookieOptions)
+            .cookie('refreshToken', newRefreshToken, options)
             .json({ accessToken, message: 'Access token refreshed successfully.' });
 
     } catch (error) {
         // This catches JWT errors like expiration or malformation
-        return res
-            .status(401)
-            .clearCookie('refreshToken', cookieOptions)
-            .json({ message: 'Invalid or expired refresh token. Please log in again.' });
+        return res.status(401).json({ message: 'Invalid or expired refresh token.' });
     }
 };
 
@@ -199,11 +190,10 @@ export const logoutHandler = async (req, res) => {
         const options = {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
         };
 
         return res.status(200).clearCookie('refreshToken', options).json({ message: 'User logged out successfully.' });
     } catch (error) {
-        return res.status(500).json({ message: 'An error occurred during logout. Please try again.' });
+        return res.status(500).json({ message: 'Logout failed. Please try again.' });
     }
 };

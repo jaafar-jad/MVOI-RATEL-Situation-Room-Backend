@@ -40,8 +40,8 @@ const complaintSchema = new mongoose.Schema(
             index: true,
         },
         title: {
-            type: String, 
-            required: [true, 'A complaint title is required.'],
+            type: String,
+            required: [true, 'A title for the case or initiative is required.'],
             trim: true,
         },
         contactNumber: {
@@ -50,11 +50,20 @@ const complaintSchema = new mongoose.Schema(
         complainant: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
+            // required: true, // Made optional to support anonymous MVOI submissions
+        },
+        type: {
+            type: String,
+            enum: ['Case', 'MVOI'],
+            default: 'Case',
             required: true,
         },
         category: {
             type: String,
-            // required: [true, 'Complaint category is required.'], // Made optional for drafts
+            required: function() {
+                // Only required if the type is 'Case'
+                return this.type === 'Case';
+            },
             enum: [
                 'Vendor & Service Issues',
                 'Peer-to-Peer Disputes',
@@ -64,7 +73,10 @@ const complaintSchema = new mongoose.Schema(
         },
         desiredAction: {
             type: String,
-            // required: [true, 'Desired action is required.'], // Made optional for drafts
+            required: function() {
+                // Only required if the type is 'Case'
+                return this.type === 'Case';
+            },
             enum: [
                 'Mediation/Internal Settlement',
                 'Formal Legal Support/Court Action',
@@ -83,7 +95,9 @@ const complaintSchema = new mongoose.Schema(
         },
         narrative: {
             type: String,
-            // required: [true, 'A detailed narrative is required.'], // Made optional for drafts
+            required: function() {
+                return this.type === 'Case';
+            },
         },
         evidenceUrls: [String],
         statusHistory: [statusHistorySchema],
@@ -104,6 +118,25 @@ const complaintSchema = new mongoose.Schema(
             enum: ['Resolved Successfully', 'Unresolved', 'Cancelled by User'],
             // This field is only set when the case status is 'Closed'
         },
+        // --- NEW: Fields for MVOI Initiatives ---
+        initiativeCategory: {
+            type: String,
+            enum: ['Clean Water (Borehole)', 'Education (School Aid)', 'Disaster Relief', 'Skills Acquisition (Handwork)'],
+        },
+        applicantType: {
+            type: String,
+            enum: ['Individual', 'Community'],
+        },
+        locationDetails: {
+            state: String,
+            lga: String,
+            community: String,
+        },
+        beneficiaryCount: {
+            type: Number,
+        },
+        // --- END NEW ---
+
         // --- Fields for Public Feed ---
         publicNarrative: {
             type: String, // A sanitized, admin-approved version of the narrative for public view

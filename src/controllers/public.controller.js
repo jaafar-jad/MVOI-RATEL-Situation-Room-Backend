@@ -1,6 +1,8 @@
 import Complaint from '../models/complaint.model.js';
 import User from '../models/user.model.js';
 import AppSettings from '../models/settings.model.js';
+import { generateCaseRef } from '../utils/helpers.js';
+import { notifyAdmins } from '../utils/notification.js';
 import crypto from 'crypto';
 
 /**
@@ -203,14 +205,31 @@ export const getPublicStats = async (req, res) => {
 
         const totalUsersPromise = User.countDocuments();
 
-        const [totalResolved, totalUsers] = await Promise.all([
+        const activeCasesPromise = Complaint.countDocuments({
+            status: { $in: ['Pending Review', 'Approved for Scheduling', 'Ongoing', 'Case Active'] }
+        });
+
+        const totalClosedPromise = Complaint.countDocuments({ status: 'Closed' });
+
+        const mvoiImpactPromise = Complaint.aggregate([
+            { $match: { type: 'MVOI' } },
+            { $group: { _id: null, total: { $sum: '$beneficiaryCount' } } }
+        ]);
+
+        const [totalResolved, totalUsers, activeCases, totalClosed, mvoiImpactResult] = await Promise.all([
             totalResolvedPromise,
-            totalUsersPromise
+            totalUsersPromise,
+            activeCasesPromise,
+            totalClosedPromise,
+            mvoiImpactPromise
         ]);
 
         const stats = {
             totalResolved,
             totalUsers,
+            activeCases,
+            resolutionRate: totalClosed > 0 ? ((totalResolved / totalClosed) * 100).toFixed(1) : "0.0",
+            mvoiImpact: mvoiImpactResult[0]?.total || 0
         };
 
         return res.status(200).json({ stats });
