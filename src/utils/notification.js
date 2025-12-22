@@ -19,10 +19,12 @@ export const createNotification = async (recipientId, message, link) => {
  * Creates a notification for all Admins and Staff.
  * @param {string} message - The notification message.
  * @param {string} [link] - An optional link for the notification.
+ * @param {'Admin' | 'Staff'} [minimumRole='Staff'] - The minimum role required to receive the notification. 'Staff' means Staff and Admins, 'Admin' means only Admins.
  */
-export const notifyAdmins = async (message, link) => {
+export const notifyAdmins = async (message, link, minimumRole = 'Staff') => {
     try {
-        const admins = await User.find({ role: { $in: ['Admin', 'Staff'] } }).select('_id');
+        const rolesToNotify = minimumRole === 'Admin' ? ['Admin'] : ['Admin', 'Staff'];
+        const admins = await User.find({ role: { $in: rolesToNotify } }).select('_id');
         const notifications = admins.map(admin => ({
             recipient: admin._id,
             message,

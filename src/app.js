@@ -46,7 +46,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/v1', (req, res) => {
-    res.status(200).json({ status: 'success', message: 'Advocacy and Dispute Resolution API is running!' });
+    res.status(200).json({ status: 'success', message: 'Mvoi-Ratel Situation Room API is running!' });
 });
 
 app.use('/api/v1/auth', authRouter);

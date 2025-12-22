@@ -1,6 +1,6 @@
 import Complaint from '../models/complaint.model.js';
 import User from '../models/user.model.js';
-import { createNotification } from '../utils/notification.js';
+import { createNotification, notifyAdmins } from '../utils/notification.js';
 import { sendEmail } from '../utils/email.js';
 import cloudinary from '../config/cloudinary.js';
 import bcrypt from 'bcryptjs';
@@ -418,6 +418,51 @@ export const respondToUserProposal = async (req, res) => {
         return res.status(500).json({ message: 'Error responding to user proposal.', error: error.message });
     }
 };
+
+/**
+ * @description Review an account appeal and either accept (reactivate) or reject it.
+ * @route PUT /api/v1/admin/appeals/:userId/review
+ * @access Admin only
+ */
+export const reviewAppeal = async (req, res) => {
+    if (req.user.role !== 'Admin') {
+        return res.status(403).json({ message: 'Forbidden. You do not have permission to review appeals.' });
+    }
+
+    const { userId } = req.params;
+    const { action, reason } = req.body; // action: 'accept' or 'reject'
+
+    if (!['accept', 'reject'].includes(action)) {
+        return res.status(400).json({ message: 'Invalid action specified. Must be "accept" or "reject".' });
+    }
+
+    try {
+        const userToUpdate = await User.findById(userId);
+        if (!userToUpdate) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        let notificationMessage = '';
+        let responseMessage = '';
+
+        if (action === 'accept') {
+            userToUpdate.status = 'Active';
+            userToUpdate.appealReason = undefined; // Clear the appeal reason
+            notificationMessage = 'Your account appeal has been accepted. Your access has been restored.';
+            responseMessage = `User ${userToUpdate.fullName} has been reactivated.`;
+        } else { // reject
+            notificationMessage = `Your account appeal has been reviewed and was not approved. Reason: ${reason || 'No reason provided.'}`;
+            responseMessage = `Appeal for ${userToUpdate.fullName} has been rejected.`;
+        }
+
+        await userToUpdate.save();
+        await createNotification(userToUpdate._id, notificationMessage, '/complainant/dashboard');
+        await sendEmail(userToUpdate.email, 'Update on Your Account Appeal', `<p>${notificationMessage}</p>`);
+        return res.status(200).json({ user: userToUpdate, message: responseMessage });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error reviewing appeal.', error: error.message });
+    }
+};
 /**
  * @description Revert a case from 'Approved for Scheduling' back to 'Pending Review'.
  * @route PUT /api/v1/admin/revert-case/:caseId
@@ -795,38 +840,81 @@ export const createStaffAccount = async (req, res) => {
             return res.status(409).json({ message: 'A user with this email already exists.' });
         }
 
-        // Generate a secure temporary password
-        const tempPassword = crypto.randomBytes(8).toString('hex');
-        const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
         const newUser = await User.create({
             fullName,
             email,
-            password: hashedPassword, // Assuming you add a password field to your User schema for this
             role: 'Staff',
             verificationStatus: 'Verified', // Staff are implicitly verified
         });
 
-        // Send an email to the new staff member with their temporary password
+        // Send an email to the new staff member directing them to login via Google
         const emailSubject = 'Your New Staff Account has been Created';
+        const loginUrl = 'https://mvoi-ratel-situation-room.vercel.app/';
         const emailHtml = `
             <h1>Welcome to the Team!</h1>
             <p>Hello ${fullName},</p>
-            <p>An administrator has created a staff account for you on the Advocacy Platform.</p>
-            <p>You can log in using your email and the following temporary password:</p>
-            <p><strong>Password:</strong> <code>${tempPassword}</code></p>
-            <p>It is highly recommended that you change your password upon your first login.</p>
+            <p>An administrator has created a staff account for you on the Mvoi-Ratel Situation Room.</p>
+            <p>Please log in by clicking the link below and selecting <strong>"Sign in with Google"</strong> using this email address (${email}).</p>
+            <p><a href="${loginUrl}" style="background-color: #2DD4BF; color: #000; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 5px;">Access Dashboard</a></p>
+            <p>Or visit: <a href="${loginUrl}">${loginUrl}</a></p>
         `;
         await sendEmail(email, emailSubject, emailHtml);
 
         const userResponse = { ...newUser.toObject() };
-        delete userResponse.password;
         delete userResponse.refreshToken;
 
-        return res.status(201).json({ user: userResponse, message: 'Staff account created successfully. An email has been sent with a temporary password.' });
+        return res.status(201).json({ user: userResponse, message: 'Staff account created successfully. An email has been sent with login instructions.' });
 
     } catch (error) {
         return res.status(500).json({ message: 'Error creating staff account.', error: error.message });
+    }
+};
+
+/**
+ * @description Bulk update status for multiple users.
+ * @route PUT /api/v1/admin/users/bulk-status
+ * @access Admin only
+ */
+export const bulkUpdateUserStatus = async (req, res) => {
+    if (req.user.role !== 'Admin') {
+        return res.status(403).json({ message: 'Forbidden. You do not have permission to perform bulk actions.' });
+    }
+
+    const { userIds, status } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: 'An array of userIds is required.' });
+    }
+
+    if (!['Active', 'Inactive', 'Suspended'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status specified.' });
+    }
+
+    try {
+        const result = await User.updateMany(
+            { _id: { $in: userIds } },
+            { $set: { status: status } }
+        );
+
+        return res.status(200).json({ message: `${result.modifiedCount} users updated to ${status}.` });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error during bulk user status update.', error: error.message });
+    }
+};
+
+/**
+ * @description Get all users who have submitted an appeal.
+ * @route GET /api/v1/admin/users/appeals
+ * @access Admin only
+ */
+export const getAppealingUsers = async (req, res) => {
+    try {
+        const appealingUsers = await User.find({ appealReason: { $exists: true, $ne: '' } })
+            .select('fullName email role status appealReason')
+            .sort({ updatedAt: -1 });
+        return res.status(200).json({ users: appealingUsers });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error fetching appealing users.', error: error.message });
     }
 };
 

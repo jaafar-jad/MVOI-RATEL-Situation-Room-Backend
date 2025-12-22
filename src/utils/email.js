@@ -11,6 +11,15 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+// Verify connection configuration on startup
+transporter.verify((error, success) => {
+    if (error) {
+        console.error('⚠️ SMTP Connection Error:', error.message);
+    } else {
+        console.log('✅ SMTP Server is ready to take messages');
+    }
+});
+
 /**
  * Sends an email.
  * @param {string} to - The recipient's email address.
@@ -20,7 +29,7 @@ const transporter = nodemailer.createTransport({
 export const sendEmail = async (to, subject, html) => {
     try {
         await transporter.sendMail({
-            from: `"Advocacy Platform" <${process.env.GMAIL_USER}>`,
+            from: `"Mvoi-Ratel Situation Room" <${process.env.GMAIL_USER}>`,
             to,
             subject,
             html,

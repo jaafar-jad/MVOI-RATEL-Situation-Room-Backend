@@ -13,12 +13,15 @@ import {
     updatePublicNarrative, 
     addNote,
     revertCaseToPending,
+    reviewAppeal,
     respondToUserProposal,
     getAllUsers,
     updateUserRole,
     updateUserStatus,
     createStaffAccount,
     getUserById,
+    bulkUpdateUserStatus,
+    getAppealingUsers,
     bulkDeleteUsers,
     getUserStats,
     getDailyActiveUsers,
@@ -45,6 +48,8 @@ router.get('/users', getAllUsers);
 router.put('/user-role/:userId', updateUserRole);
 router.put('/user-status/:userId', updateUserStatus);
 router.post('/users/create-staff', createStaffAccount);
+router.get('/users/appeals', getAppealingUsers); // New route for fetching appeals
+router.put('/users/bulk-status', bulkUpdateUserStatus);
 router.delete('/users/bulk', bulkDeleteUsers);
 router.get('/users/:userId', getUserById);
 
@@ -59,6 +64,7 @@ router.put('/close-case/:caseId', closeCase);
 router.put('/publish-complaint/:caseId', publishComplaint); // New route to make a complaint public
 router.put('/complaint/:caseId/public-narrative', updatePublicNarrative); // New route to edit public narrative
 router.post('/complaint/:caseId/notes', addNote); // New route to add a note
+router.put('/appeals/:userId/review', reviewAppeal); // New route for reviewing appeals
 
 // --- Settings Route ---
 router.route('/settings')

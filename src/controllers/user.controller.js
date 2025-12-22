@@ -70,7 +70,8 @@ export const uploadIdDocument = async (req, res) => {
         // Notify admins that a new user needs verification
         await notifyAdmins(
             `${req.user.fullName} has submitted their ID for verification.`,
-            '/admin/verification'
+            '/admin/verification',
+            'Admin' // Only notify Admins about sensitive ID verification
         );
     }
 

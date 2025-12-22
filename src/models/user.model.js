@@ -53,6 +53,10 @@ const userSchema = new mongoose.Schema(
         lastLogin: {
             type: Date,
         },
+        appealReason: {
+            type: String,
+            trim: true,
+        },
     },
     { timestamps: true } // Automatically adds createdAt and updatedAt fields
 );

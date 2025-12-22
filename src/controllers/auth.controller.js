@@ -83,7 +83,7 @@ export const googleOAuthHandler = async (req, res) => {
         // PRD Requirement: Prevent login for inactive/suspended users.
         if (user.status === 'Inactive' || user.status === 'Suspended') {
             // Send a specific status code or message that the frontend can use.
-            return res.status(403).json({ message: `Your account has been ${user.status.toLowerCase()}. Please contact support to appeal.` });
+            return res.status(403).json({ email: user.email, message: `Your account has been ${user.status.toLowerCase()}. Please contact support to appeal.` });
         }
 
         // 3. Generate Access and Refresh Tokens
