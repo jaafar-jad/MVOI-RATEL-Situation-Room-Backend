@@ -45,19 +45,17 @@ const mvoiEvidenceStorage = new CloudinaryStorage({
 export const uploadIdToCloudinary = multer({ storage: idStorage });
 
 const evidenceFileFilter = (req, file, cb) => {
-    const allowedMimeTypes = [
-        // Images
-        'image/jpeg', 'image/png', 'image/avif', 'image/webp', 'image/gif', 'image/svg+xml', 'image/heic', 'image/heif', 'image/bmp', 'image/tiff',
-        // Videos
-        'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm', 'video/mpeg', 'video/ogg', 'video/3gpp', 'video/x-flv'
-    ];
-
-    if (allowedMimeTypes.includes(file.mimetype)) {
-        cb(null, true);
-    } else {
-        cb(new Error(`Invalid file type: ${file.mimetype}. Only image and video files are allowed.`), false);
-    }
+    // Accept all file types
+    cb(null, true);
 };
 
-export const uploadEvidenceToCloudinary = multer({ storage: evidenceStorage, fileFilter: evidenceFileFilter });
-export const uploadMvoiEvidenceToCloudinary = multer({ storage: mvoiEvidenceStorage, fileFilter: evidenceFileFilter });
+export const uploadEvidenceToCloudinary = multer({ 
+    storage: evidenceStorage, 
+    fileFilter: evidenceFileFilter,
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit per file
+});
+export const uploadMvoiEvidenceToCloudinary = multer({ 
+    storage: mvoiEvidenceStorage, 
+    fileFilter: evidenceFileFilter,
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit per file
+});

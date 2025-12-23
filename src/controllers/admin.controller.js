@@ -450,9 +450,21 @@ export const reviewAppeal = async (req, res) => {
             userToUpdate.appealReason = undefined; // Clear the appeal reason
             notificationMessage = 'Your account appeal has been accepted. Your access has been restored.';
             responseMessage = `User ${userToUpdate.fullName} has been reactivated.`;
+            
+            userToUpdate.statusHistory.push({
+                status: 'Active',
+                changedBy: req.user._id,
+                reason: 'Appeal Accepted'
+            });
         } else { // reject
             notificationMessage = `Your account appeal has been reviewed and was not approved. Reason: ${reason || 'No reason provided.'}`;
             responseMessage = `Appeal for ${userToUpdate.fullName} has been rejected.`;
+            
+            userToUpdate.statusHistory.push({
+                status: userToUpdate.status, // Status likely remains Suspended/Inactive
+                changedBy: req.user._id,
+                reason: `Appeal Rejected: ${reason || 'No reason provided'}`
+            });
         }
 
         await userToUpdate.save();
@@ -793,6 +805,18 @@ export const updateUserStatus = async (req, res) => {
         }
 
         userToUpdate.status = status;
+        
+        // If suspending or deactivating, force logout by clearing refresh token
+        if (status === 'Inactive' || status === 'Suspended') {
+            userToUpdate.refreshToken = null;
+        }
+
+        userToUpdate.statusHistory.push({
+            status,
+            changedBy: req.user._id,
+            reason: 'Manual Status Update'
+        });
+
         await userToUpdate.save();
 
         return res.status(200).json({ user: userToUpdate, message: `User status updated to ${status}.` });
@@ -891,9 +915,26 @@ export const bulkUpdateUserStatus = async (req, res) => {
     }
 
     try {
+        const updateOps = { 
+            $set: { status: status },
+            $push: {
+                statusHistory: {
+                    status: status,
+                    changedBy: req.user._id,
+                    reason: 'Bulk Status Update',
+                    timestamp: new Date()
+                }
+            }
+        };
+        
+        // If suspending or deactivating, force logout by clearing refresh tokens
+        if (status === 'Inactive' || status === 'Suspended') {
+            updateOps.$set.refreshToken = null;
+        }
+
         const result = await User.updateMany(
             { _id: { $in: userIds } },
-            { $set: { status: status } }
+            updateOps
         );
 
         return res.status(200).json({ message: `${result.modifiedCount} users updated to ${status}.` });

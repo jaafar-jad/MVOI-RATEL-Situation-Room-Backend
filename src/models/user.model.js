@@ -1,5 +1,12 @@
 import mongoose from 'mongoose';
 
+const statusHistorySchema = new mongoose.Schema({
+    status: { type: String, required: true },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: String,
+    timestamp: { type: Date, default: Date.now }
+});
+
 const userSchema = new mongoose.Schema(
     {
         oauthId: {
@@ -57,6 +64,7 @@ const userSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        statusHistory: [statusHistorySchema],
     },
     { timestamps: true } // Automatically adds createdAt and updatedAt fields
 );

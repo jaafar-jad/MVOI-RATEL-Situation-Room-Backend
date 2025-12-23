@@ -1,6 +1,6 @@
 import User from '../models/user.model.js';
 import AppSettings from '../models/settings.model.js';
-import { notifyAdmins } from '../utils/notification.js';
+import { notifyAdmins, createNotification } from '../utils/notification.js';
 
 /**
  * @description Get the profile of the currently authenticated user.
@@ -10,6 +10,13 @@ import { notifyAdmins } from '../utils/notification.js';
 export const getCurrentUser = async (req, res) => {
     // The user object is attached to the request by the verifyJWT middleware.
     // We can just send it back.
+    if (req.user.status === 'Suspended' || req.user.status === 'Inactive') {
+        return res.status(403).json({ 
+            message: 'Your account has been suspended. Please contact support.',
+            email: req.user.email 
+        });
+    }
+
     return res.status(200).json({ user: req.user, message: "Current user fetched successfully." });
 };
 
@@ -49,33 +56,38 @@ export const updateUserProfile = async (req, res) => {
  * @access Private
  */
 export const uploadIdDocument = async (req, res) => {
-    // The file is uploaded by the multer-storage-cloudinary middleware.
-    // The file details, including the secure URL, are in req.file.
-    if (!req.file) {
-        return res.status(400).json({ message: "ID document file not provided." });
+    try {
+        // The file is uploaded by the multer-storage-cloudinary middleware.
+        // The file details, including the secure URL, are in req.file.
+        if (!req.file) {
+            return res.status(400).json({ message: "ID document file not provided." });
+        }
+
+        const placeholderUrl = req.file.path; // This is the secure URL from Cloudinary
+
+        let settings = await AppSettings.findOne();
+        if (!settings) settings = await AppSettings.create({}); // Ensure settings exist
+
+        req.user.idDocumentUrl = placeholderUrl;
+
+        if (settings.autoVerifyUsers) {
+            req.user.verificationStatus = 'Verified';
+            await createNotification(req.user._id, 'Your identity has been automatically verified!', '/complainant/dashboard');
+        } else {
+            req.user.verificationStatus = 'Pending';
+            // Notify admins that a new user needs verification
+            await notifyAdmins(
+                `${req.user.fullName} has submitted their ID for verification.`,
+                '/admin/verification',
+                'Admin' // Only notify Admins about sensitive ID verification
+            );
+        }
+
+        await req.user.save({ validateBeforeSave: false });
+
+        return res.status(200).json({ user: req.user, message: "ID document uploaded. Awaiting verification." });
+    } catch (error) {
+        console.error("Error in uploadIdDocument:", error);
+        return res.status(500).json({ message: "Error uploading ID document.", error: error.message });
     }
-
-    const placeholderUrl = req.file.path; // This is the secure URL from Cloudinary
-
-    let settings = await AppSettings.findOne();
-    if (!settings) settings = await AppSettings.create({}); // Ensure settings exist
-
-    req.user.idDocumentUrl = placeholderUrl;
-
-    if (settings.autoVerifyUsers) {
-        req.user.verificationStatus = 'Verified';
-        await createNotification(req.user._id, 'Your identity has been automatically verified!', '/complainant/dashboard');
-    } else {
-        req.user.verificationStatus = 'Pending';
-        // Notify admins that a new user needs verification
-        await notifyAdmins(
-            `${req.user.fullName} has submitted their ID for verification.`,
-            '/admin/verification',
-            'Admin' // Only notify Admins about sensitive ID verification
-        );
-    }
-
-    await req.user.save({ validateBeforeSave: false });
-
-    return res.status(200).json({ user: req.user, message: "ID document uploaded. Awaiting verification." });
 };
