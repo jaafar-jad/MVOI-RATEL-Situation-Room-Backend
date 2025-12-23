@@ -8,7 +8,7 @@ import AppSettings from '../models/settings.model.js';
 export const getAppSettings = async (req, res) => {
     try {
         // Find the single settings document, or create it if it doesn't exist
-        let settings = await AppSettings.findOne();
+        let settings = await AppSettings.findOne().lean();
         if (!settings) {
             settings = await AppSettings.create({}); // Create with defaults
         }

@@ -33,7 +33,8 @@ export const getPublicComplaints = async (req, res) => {
             .limit(limit) 
             // Select all fields needed for the public card, including new interaction counts
             .populate('complainant', 'avatarUrl fullName') // Populate avatar and name for public cards
-            .select('caseRef title status category vendorDetails.name publicNarrative evidenceUrls resolutionStatus createdAt views likes dislikes likedBy dislikedBy complainant');
+            .select('caseRef title status category vendorDetails.name publicNarrative evidenceUrls resolutionStatus createdAt views likes dislikes likedBy dislikedBy complainant')
+            .lean();
 
         const totalComplaints = await Complaint.countDocuments(query);
         const totalPages = Math.ceil(totalComplaints / limit);

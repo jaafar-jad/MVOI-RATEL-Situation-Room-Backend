@@ -191,7 +191,7 @@ const createMvoiApplication = async (req, res) => {
  * @access Private
  */
 export const getUserComplaints = async (req, res) => {
-    const { status } = req.query;
+    const { status, limit } = req.query;
 
     const query = { complainant: req.user._id };
 
@@ -202,8 +202,13 @@ export const getUserComplaints = async (req, res) => {
     try {
         // Fetch all complaints matching the query, sorted by most recently updated.
         // Pagination and further sorting will be handled on the client-side.
-        const complaints = await Complaint.find(query)
-            .sort({ updatedAt: -1 });
+        let dbQuery = Complaint.find(query).sort({ updatedAt: -1 });
+
+        if (limit) {
+            dbQuery = dbQuery.limit(parseInt(limit));
+        }
+
+        const complaints = await dbQuery.lean();
 
         // The response no longer includes pagination details.
         return res.status(200).json({ complaints, message: 'User complaints fetched successfully.' });
@@ -405,33 +410,36 @@ export const deleteEvidence = async (req, res) => {
  */
 export const getComplaintStats = async (req, res) => {
     try {
-        const stats = await Complaint.aggregate([
+        const statsResult = await Complaint.aggregate([
             {
                 $match: { complainant: req.user._id }
             },
             {
-                $group: {
-                    _id: '$status',
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: '$count' },
-                    statuses: { $push: { status: '$_id', count: '$count' } }
+                $facet: {
+                    total: [{ $count: 'value' }],
+                    byStatus: [
+                        { $group: { _id: '$status', count: { $sum: 1 } } }
+                    ]
                 }
             },
             {
                 $project: {
-                    _id: 0,
-                    total: 1,
-                    statuses: { $arrayToObject: { $map: { input: '$statuses', as: 's', in: ['$$s.status', '$$s.count'] } } }
+                    total: { $ifNull: [{ $arrayElemAt: ['$total.value', 0] }, 0] },
+                    statuses: {
+                        $arrayToObject: {
+                            $map: {
+                                input: '$byStatus',
+                                as: 's',
+                                in: ['$$s._id', '$$s.count']
+                            }
+                        }
+                    }
                 }
             }
         ]);
 
-        return res.status(200).json({ stats: stats[0] || { total: 0, statuses: {} }, message: 'Complaint statistics fetched successfully.' });
+        const stats = statsResult[0] || { total: 0, statuses: {} };
+        return res.status(200).json({ stats, message: 'Complaint statistics fetched successfully.' });
     } catch (error) {
         return res.status(500).json({ message: 'Error fetching complaint statistics.', error: error.message });
     }
