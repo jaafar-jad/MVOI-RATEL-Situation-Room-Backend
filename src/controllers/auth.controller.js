@@ -99,6 +99,7 @@ export const googleOAuthHandler = async (req, res) => {
             httpOnly: true, // The cookie is not accessible via client-side JavaScript
             secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in production
             sameSite: 'strict',
+            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
         };
 
         // Prepare user data to send back (don't send sensitive info)
@@ -162,6 +163,7 @@ export const refreshAccessTokenHandler = async (req, res) => {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
+            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
         };
 
         return res

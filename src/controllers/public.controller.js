@@ -246,10 +246,10 @@ export const getPublicStats = async (req, res) => {
  */
 export const getPublicSettings = async (req, res) => {
     try {
-        let settings = await AppSettings.findOne().select('allowPublicView');
+        let settings = await AppSettings.findOne().select('allowPublicView maintenanceMode maintenanceScheduledAt maintenanceNotice');
         if (!settings) {
             // If no settings exist, return the default state
-            settings = { allowPublicView: false };
+            settings = { allowPublicView: false, maintenanceMode: false, maintenanceScheduledAt: null, maintenanceNotice: '' };
         }
         return res.status(200).json({ settings });
     } catch (error) {

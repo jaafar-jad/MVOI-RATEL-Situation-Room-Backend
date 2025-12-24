@@ -29,7 +29,7 @@ export const updateAppSettings = async (req, res) => {
         return res.status(403).json({ message: 'Forbidden. Only administrators can update settings.' });
     }
 
-    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView } = req.body;
+    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView, maintenanceMode, maintenanceScheduledAt, maintenanceNotice } = req.body;
 
     try {
         // Find the single settings document, or create it if it doesn't exist
@@ -41,6 +41,13 @@ export const updateAppSettings = async (req, res) => {
         if (typeof autoVerifyUsers === 'boolean') settings.autoVerifyUsers = autoVerifyUsers;
         if (typeof autoAcceptComplaints === 'boolean') settings.autoAcceptComplaints = autoAcceptComplaints;
         if (typeof allowPublicView === 'boolean') settings.allowPublicView = allowPublicView;
+        // Robust boolean check for maintenanceMode
+        if (maintenanceMode !== undefined) settings.maintenanceMode = maintenanceMode === true || maintenanceMode === 'true';
+        
+        // Handle date or null explicitly
+        settings.maintenanceScheduledAt = maintenanceScheduledAt ? new Date(maintenanceScheduledAt) : null;
+        
+        if (maintenanceNotice) settings.maintenanceNotice = maintenanceNotice;
 
         await settings.save();
         return res.status(200).json({ settings, message: 'App settings updated successfully.' });

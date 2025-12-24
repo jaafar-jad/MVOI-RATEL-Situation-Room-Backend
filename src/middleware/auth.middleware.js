@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/user.model.js';
+import AppSettings from '../models/settings.model.js';
 
 /**
  * Middleware to verify JWT access token and attach user to the request.
@@ -22,6 +23,13 @@ export const verifyJWT = async (req, res, next) => {
         }
 
         req.user = user;
+
+        // Check for Maintenance Mode
+        const settings = await AppSettings.findOne();
+        if (settings?.maintenanceMode && user.role !== 'Admin') {
+            return res.status(503).json({ message: 'System is currently in maintenance mode. Please try again later.' });
+        }
+
         next();
     } catch (error) {
         let message = 'Invalid access token.';
