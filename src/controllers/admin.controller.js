@@ -70,7 +70,7 @@ export const getComplaintStats = async (req, res) => {
 export const getComplaints = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const { search, category, desiredAction, status, sortBy, sortOrder, type } = req.query; // Added 'type'
+    const { search, category, desiredAction, status, sortBy, sortOrder, type, recentUploads } = req.query; // Added 'type'
     const skip = (page - 1) * limit;
 
     try {
@@ -96,6 +96,13 @@ export const getComplaints = async (req, res) => {
         }
         if (desiredAction) {
             complaintMatchStage.desiredAction = desiredAction;
+        }
+
+        // --- Filter by Recent Uploads (Last 24h) ---
+        if (recentUploads === 'true') {
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            // Filter complaints created or updated recently
+            complaintMatchStage.updatedAt = { $gte: twentyFourHoursAgo };
         }
 
         // --- Optimized Search Logic ---
@@ -181,6 +188,20 @@ export const getComplaints = async (req, res) => {
  * @access Admin/Staff
  */
 export const getUsersToVerify = async (req, res) => {
+    try {
+        // This can be a simple query as it's for a specific dashboard widget/page.
+        // The more complex getAllUsers can be used for the main User Management table.
+        const usersToVerify = await User.find({ verificationStatus: 'Pending' })
+            .select('-password -refreshToken') // Exclude sensitive data
+            .sort({ updatedAt: -1 }); // Show most recently submitted first
+
+        return res.status(200).json({ users: usersToVerify });
+    } catch (error) {
+        return res.status(500).json({
+            message: 'Error fetching users pending verification.',
+            error: error.message
+        });
+    }
 };
 
 /**
@@ -190,12 +211,25 @@ export const getUsersToVerify = async (req, res) => {
  */
 export const verifyUser = async (req, res) => {
     const { status } = req.body; // Expects 'Verified', 'Rejected', or 'Not Submitted' (for revoking)
-    if (!['Verified', 'Rejected'].includes(status)) {
-        return res.status(400).json({ message: "Invalid status provided. Must be 'Verified' or 'Rejected'." });
+    if (!['Verified', 'Rejected', 'Pending', 'Not Submitted'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status provided." });
     }
 
     try {
-        const user = await User.findByIdAndUpdate(req.params.userId, { verificationStatus: status }, { new: true });
+        const user = await User.findByIdAndUpdate(
+            req.params.userId, 
+            { 
+                verificationStatus: status,
+                $push: {
+                    verificationHistory: {
+                        status: status,
+                        changedBy: req.user._id,
+                        notes: `Admin verification update: ${status}`
+                    }
+                }
+            }, 
+            { new: true }
+        );
         if (!user) {
             return res.status(404).json({ message: 'User not found.' });
         }
@@ -598,68 +632,44 @@ export const bulkDeleteComplaints = async (req, res) => {
     }
 };
 
+
 /**
- * @description Mark a complaint as public and set its public narrative.
- * @route PUT /api/v1/admin/publish-complaint/:caseId
+ * @description Admin updates any detail of a complaint, including publishing it.
+ * @route PUT /api/v1/admin/complaint/:id/details
  * @access Admin/Staff
  */
-export const publishComplaint = async (req, res) => {
-    const { publicNarrative } = req.body;
+export const updateComplaintDetails = async (req, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
 
-    if (!publicNarrative || publicNarrative.trim() === '') {
-        return res.status(400).json({ message: 'A public narrative is required.' });
+    // Sanitize updateData to prevent unwanted field updates like status, complainant, etc.
+    const allowedUpdates = [
+        'title', 'category', 'desiredAction', 'narrative', 
+        'publicNarrative', 'isPublic', 'vendorDetails', 
+        'initiativeCategory', 'applicantType', 'locationDetails', 'beneficiaryCount'
+    ];
+    const finalUpdateData = {};
+    for (const key of allowedUpdates) {
+        // Check for undefined to allow setting boolean `isPublic` to false
+        if (updateData[key] !== undefined) {
+            finalUpdateData[key] = updateData[key];
+        }
+    }
+
+    if (Object.keys(finalUpdateData).length === 0) {
+        return res.status(400).json({ message: 'No valid fields provided for update.' });
     }
 
     try {
-        const complaint = await Complaint.findById(req.params.caseId);
+        const complaint = await Complaint.findByIdAndUpdate(id, { $set: finalUpdateData }, { new: true });
 
         if (!complaint) {
             return res.status(404).json({ message: 'Complaint not found.' });
         }
 
-        // Update the complaint to be public
-        complaint.isPublic = true;
-        complaint.publicNarrative = publicNarrative;
-        await complaint.save();
-
-        return res.status(200).json({ complaint, message: 'Complaint has been published to the public feed.' });
-
+        return res.status(200).json({ complaint, message: 'Complaint details updated successfully.' });
     } catch (error) {
-        return res.status(500).json({ message: 'Error publishing complaint.', error: error.message });
-    }
-};
-
-/**
- * @description Update the public narrative of an already published complaint.
- * @route PUT /api/v1/admin/complaint/:caseId/public-narrative
- * @access Admin/Staff
- */
-export const updatePublicNarrative = async (req, res) => {
-    const { publicNarrative } = req.body;
-
-    if (!publicNarrative || publicNarrative.trim() === '') {
-        return res.status(400).json({ message: 'A public narrative is required.' });
-    }
-
-    try {
-        const complaint = await Complaint.findById(req.params.caseId);
-
-        if (!complaint) {
-            return res.status(404).json({ message: 'Complaint not found.' });
-        }
-
-        // Ensure the complaint is actually public before allowing an edit.
-        if (!complaint.isPublic) {
-            return res.status(403).json({ message: 'Cannot edit narrative. The complaint is not public.' });
-        }
-
-        complaint.publicNarrative = publicNarrative;
-        await complaint.save();
-
-        return res.status(200).json({ complaint, message: 'Public narrative updated successfully.' });
-
-    } catch (error) {
-        return res.status(500).json({ message: 'Error updating public narrative.', error: error.message });
+        return res.status(500).json({ message: 'Error updating complaint details.', error: error.message });
     }
 };
 
@@ -708,7 +718,7 @@ export const addNote = async (req, res) => {
 export const getAllUsers = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 15;
-    const { search, role, verificationStatus, status, sortBy, sortOrder } = req.query;
+    const { search, role, verificationStatus, status, sortBy, sortOrder, recentUploads } = req.query;
     const skip = (page - 1) * limit;
 
     try {
@@ -718,6 +728,13 @@ export const getAllUsers = async (req, res) => {
         if (role) matchStage.role = role;
         if (verificationStatus) matchStage.verificationStatus = verificationStatus;
         if (status) matchStage.status = status;
+
+        // --- Filter by Recent ID Uploads (Last 24h) ---
+        if (recentUploads === 'true') {
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            matchStage.updatedAt = { $gte: twentyFourHoursAgo };
+            matchStage.idDocumentUrl = { $exists: true, $ne: null }; // Ensure they actually have a doc
+        }
 
         // --- ROBUST PARTIAL SEARCH LOGIC ---
         if (search) {
@@ -832,7 +849,9 @@ export const updateUserStatus = async (req, res) => {
  */
 export const getUserById = async (req, res) => {
     try {
-        const user = await User.findById(req.params.userId).select('-refreshToken -password');
+        const user = await User.findById(req.params.userId)
+            .select('-refreshToken -password')
+            .populate('verificationHistory.changedBy', 'fullName email');
         if (!user) {
             return res.status(404).json({ message: 'User not found.' });
         }
@@ -940,6 +959,42 @@ export const bulkUpdateUserStatus = async (req, res) => {
         return res.status(200).json({ message: `${result.modifiedCount} users updated to ${status}.` });
     } catch (error) {
         return res.status(500).json({ message: 'Error during bulk user status update.', error: error.message });
+    }
+};
+
+/**
+ * @description Bulk verify users.
+ * @route PUT /api/v1/admin/users/bulk-verify
+ * @access Admin/Staff
+ */
+export const bulkVerifyUsers = async (req, res) => {
+    const { userIds, status } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: 'An array of userIds is required.' });
+    }
+
+    if (!['Verified', 'Rejected', 'Pending'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status specified.' });
+    }
+
+    try {
+        const updateOps = { 
+            $set: { verificationStatus: status },
+            $push: {
+                verificationHistory: {
+                    status: status,
+                    changedBy: req.user._id,
+                    notes: `Bulk Verification: ${status}`,
+                    timestamp: new Date()
+                }
+            }
+        };
+
+        const result = await User.updateMany({ _id: { $in: userIds } }, updateOps);
+        return res.status(200).json({ message: `${result.modifiedCount} users verification status updated to ${status}.` });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error during bulk verification.', error: error.message });
     }
 };
 
@@ -1214,14 +1269,18 @@ export const getAppSettings = async (req, res) => {
  * @access Admin only
  */
 export const updateAppSettings = async (req, res) => {
-    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView } = req.body;
+    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView, maintenanceMode, maintenanceScheduledAt, maintenanceNotice } = req.body;
 
     try {
-        const settings = await AppSettings.findOneAndUpdate({}, {
-            autoVerifyUsers,
-            autoAcceptComplaints,
-            allowPublicView,
-        }, {
+        const updateData = {};
+        if (autoVerifyUsers !== undefined) updateData.autoVerifyUsers = autoVerifyUsers;
+        if (autoAcceptComplaints !== undefined) updateData.autoAcceptComplaints = autoAcceptComplaints;
+        if (allowPublicView !== undefined) updateData.allowPublicView = allowPublicView;
+        if (maintenanceMode !== undefined) updateData.maintenanceMode = maintenanceMode;
+        if (maintenanceScheduledAt !== undefined) updateData.maintenanceScheduledAt = maintenanceScheduledAt;
+        if (maintenanceNotice !== undefined) updateData.maintenanceNotice = maintenanceNotice;
+
+        const settings = await AppSettings.findOneAndUpdate({}, updateData, {
             new: true,
             upsert: true // Create if it doesn't exist
         });

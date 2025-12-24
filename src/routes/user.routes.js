@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCurrentUser, updateUserProfile, uploadIdDocument } from '../controllers/user.controller.js';
+import { getCurrentUser, updateUserProfile, uploadIdDocument, revokeIdSubmission } from '../controllers/user.controller.js';
 import { verifyJWT } from '../middleware/auth.middleware.js';
 import { uploadIdToCloudinary } from '../middleware/multer.middleware.js';
 
@@ -14,5 +14,8 @@ router.route('/me')
 
 router.route('/upload-id')
     .post(uploadIdToCloudinary.single('idDocument'), uploadIdDocument); // 'idDocument' is the field name in the form-data
+
+router.route('/revoke-id')
+    .delete(revokeIdSubmission);
 
 export default router;

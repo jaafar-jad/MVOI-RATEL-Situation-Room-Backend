@@ -9,7 +9,7 @@ const idStorage = new CloudinaryStorage({
         const idPrefix = req.user ? req.user._id.toString() : 'unauthenticated';
         return {
             folder: 'advocacy-platform/user-ids',
-            allowed_formats: ['jpg', 'png', 'jpeg', 'pdf'],
+            resource_type: 'auto', // Allow any file type (image, video, raw, pdf)
             public_id: `${idPrefix}-${Date.now()}`,
         };
     },
@@ -42,7 +42,10 @@ const mvoiEvidenceStorage = new CloudinaryStorage({
     },
 });
 
-export const uploadIdToCloudinary = multer({ storage: idStorage });
+export const uploadIdToCloudinary = multer({ 
+    storage: idStorage,
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit
+});
 
 const evidenceFileFilter = (req, file, cb) => {
     // Accept all file types

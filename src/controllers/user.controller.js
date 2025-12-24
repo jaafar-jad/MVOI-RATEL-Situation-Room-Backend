@@ -72,7 +72,7 @@ export const uploadIdDocument = async (req, res) => {
 
         if (settings.autoVerifyUsers) {
             req.user.verificationStatus = 'Verified';
-            await createNotification(req.user._id, 'Your identity has been automatically verified!', '/complainant/dashboard');
+            await createNotification(req.user._id, 'Your identity has been verified!', '/complainant/dashboard');
         } else {
             req.user.verificationStatus = 'Pending';
             // Notify admins that a new user needs verification
@@ -83,11 +83,41 @@ export const uploadIdDocument = async (req, res) => {
             );
         }
 
+        req.user.verificationHistory.push({
+            status: req.user.verificationStatus,
+            changedBy: req.user._id,
+            notes: 'ID Document Uploaded'
+        });
+
         await req.user.save({ validateBeforeSave: false });
 
         return res.status(200).json({ user: req.user, message: "ID document uploaded. Awaiting verification." });
     } catch (error) {
         console.error("Error in uploadIdDocument:", error);
         return res.status(500).json({ message: "Error uploading ID document.", error: error.message });
+    }
+};
+
+/**
+ * @description Revoke a pending ID submission.
+ * @route DELETE /api/v1/users/revoke-id
+ * @access Private
+ */
+export const revokeIdSubmission = async (req, res) => {
+    try {
+        if (req.user.verificationStatus === 'Verified') {
+            return res.status(400).json({ message: 'Cannot revoke ID after verification is complete.' });
+        }
+        req.user.idDocumentUrl = undefined;
+        req.user.verificationHistory.push({
+            status: 'Revoked',
+            changedBy: req.user._id,
+            notes: 'User revoked submission'
+        });
+        req.user.verificationStatus = 'Not Submitted';
+        await req.user.save({ validateBeforeSave: false });
+        return res.status(200).json({ user: req.user, message: 'ID submission revoked.' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error revoking ID submission.', error: error.message });
     }
 };

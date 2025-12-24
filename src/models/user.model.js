@@ -7,6 +7,13 @@ const statusHistorySchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 
+const verificationHistorySchema = new mongoose.Schema({
+    status: { type: String, required: true },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    timestamp: { type: Date, default: Date.now },
+    notes: String
+});
+
 const userSchema = new mongoose.Schema(
     {
         oauthId: {
@@ -65,6 +72,7 @@ const userSchema = new mongoose.Schema(
             trim: true,
         },
         statusHistory: [statusHistorySchema],
+        verificationHistory: [verificationHistorySchema],
     },
     { timestamps: true } // Automatically adds createdAt and updatedAt fields
 );
