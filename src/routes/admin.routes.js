@@ -28,7 +28,6 @@ import {
     updateAppSettings,
     getSystemLogs,
     getServerLoad,
-    searchUsersForBypass,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -50,7 +49,6 @@ router.put('/user-role/:userId', updateUserRole);
 router.put('/user-status/:userId', updateUserStatus);
 router.post('/users/create-staff', createStaffAccount);
 router.get('/users/appeals', getAppealingUsers); // New route for fetching appeals
-router.get('/users/search-for-bypass', searchUsersForBypass); // New route for bypass search
 router.put('/users/bulk-status', bulkUpdateUserStatus);
 router.put('/users/bulk-verify', bulkVerifyUsers); // New route for bulk verification
 router.delete('/users/bulk', bulkDeleteUsers);

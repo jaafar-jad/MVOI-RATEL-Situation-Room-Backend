@@ -1270,18 +1270,13 @@ export const getAppSettings = async (req, res) => {
  * @access Admin only
  */
 export const updateAppSettings = async (req, res) => {
-    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView, maintenanceMode, maintenanceScheduledAt, maintenanceNotice, bypassList, bypassRoles } = req.body;
+    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView } = req.body;
 
     try {
         const updateData = {};
         if (autoVerifyUsers !== undefined) updateData.autoVerifyUsers = autoVerifyUsers;
         if (autoAcceptComplaints !== undefined) updateData.autoAcceptComplaints = autoAcceptComplaints;
         if (allowPublicView !== undefined) updateData.allowPublicView = allowPublicView;
-        if (maintenanceMode !== undefined) updateData.maintenanceMode = maintenanceMode;
-        if (maintenanceScheduledAt !== undefined) updateData.maintenanceScheduledAt = maintenanceScheduledAt;
-        if (maintenanceNotice !== undefined) updateData.maintenanceNotice = maintenanceNotice;
-        if (bypassList !== undefined) updateData.bypassList = bypassList.map((email) => email.toLowerCase());
-        if (bypassRoles !== undefined) updateData.bypassRoles = bypassRoles;
 
         const settings = await AppSettings.findOneAndUpdate({}, updateData, {
             new: true,
@@ -1375,23 +1370,5 @@ export const getServerLoad = async (req, res) => {
         });
     } catch (error) {
         return res.status(500).json({ message: 'Error fetching server load.', error: error.message });
-    }
-};
-
-/**
- * @description Search for users to add to the bypass list.
- * @route GET /api/v1/admin/users/search-for-bypass
- * @access Admin only
- */
-export const searchUsersForBypass = async (req, res) => {
-    const { search } = req.query;
-    if (!search) {
-        return res.status(200).json({ users: [] });
-    }
-    try {
-        const users = await User.find({ $text: { $search: search } }).select('fullName email avatarUrl').limit(10);
-        return res.status(200).json({ users });
-    } catch (error) {
-        return res.status(500).json({ message: 'Error searching for users.', error: error.message });
     }
 };

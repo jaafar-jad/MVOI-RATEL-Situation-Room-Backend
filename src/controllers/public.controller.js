@@ -247,64 +247,13 @@ export const getPublicStats = async (req, res) => {
  */
 export const getPublicSettings = async (req, res) => {
     try {
-        let settings = await AppSettings.findOne().select('allowPublicView maintenanceMode maintenanceScheduledAt maintenanceNotice');
+        let settings = await AppSettings.findOne().select('allowPublicView');
         if (!settings) {
             // If no settings exist, return the default state
-            settings = { allowPublicView: false, maintenanceMode: false, maintenanceScheduledAt: null, maintenanceNotice: '' };
+            settings = { allowPublicView: false };
         }
         return res.status(200).json({ settings });
     } catch (error) {
         return res.status(500).json({ message: 'Error fetching public settings.', error: error.message });
-    }
-};
-
-/**
- * @description Verify an email for maintenance mode bypass.
- * @route POST /api/v1/public/verify-bypass
- * @access Public
- */
-export const verifyBypassEmail = async (req, res) => {
-    const { email } = req.body;
-    if (!email) {
-        return res.status(400).json({ message: 'Email is required.' });
-    }
-
-    try {
-        const settings = await AppSettings.findOne().lean();
-        if (!settings || !settings.maintenanceMode) {
-            return res.status(400).json({ message: 'System is not in maintenance mode.' });
-        }
-
-        let canBypass = false;
-        const lowerCaseEmail = email.toLowerCase();
-
-        // 1. Admins can always bypass
-        const user = await User.findOne({ email: lowerCaseEmail }).lean();
-        if (user && user.role === 'Admin') {
-            canBypass = true;
-        }
-
-        // 2. Check individual bypass list
-        if (!canBypass && settings.bypassList && settings.bypassList.includes(lowerCaseEmail)) {
-            canBypass = true;
-        }
-
-        // 3. Check role-based bypass list
-        if (!canBypass && user && settings.bypassRoles && settings.bypassRoles.includes(user.role)) {
-            canBypass = true;
-        }
-
-        if (canBypass) {
-            const bypassToken = jwt.sign({ email: lowerCaseEmail }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '8h' });
-            const options = {
-                httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 8 * 60 * 60 * 1000, // 8 hours
-            };
-            return res.status(200).cookie('maintenance_bypass', bypassToken, options).json({ message: 'Bypass authorized.' });
-        }
-
-        return res.status(403).json({ message: 'Access Denied. This email is not authorized for bypass.' });
-
-    } catch (error) {
-        return res.status(500).json({ message: 'Error verifying bypass.', error: error.message });
     }
 };
