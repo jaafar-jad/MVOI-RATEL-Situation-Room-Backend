@@ -25,6 +25,14 @@ const appSettingsSchema = new mongoose.Schema({
         type: String,
         default: 'The system will be down for scheduled maintenance soon.',
     },
+    bypassList: {
+        type: [String], // Array of whitelisted emails
+        default: [],
+    },
+    bypassRoles: {
+        type: [String], // Array of whitelisted roles (e.g., 'Staff', 'User')
+        default: [],
+    },
 });
 
 // Create a singleton-like model. We only ever want one document.

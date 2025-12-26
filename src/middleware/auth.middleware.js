@@ -25,9 +25,16 @@ export const verifyJWT = async (req, res, next) => {
         req.user = user;
 
         // Check for Maintenance Mode
-        const settings = await AppSettings.findOne();
-        if (settings?.maintenanceMode && user.role !== 'Admin') {
-            return res.status(503).json({ message: 'System is currently in maintenance mode. Please try again later.' });
+        const settings = await AppSettings.findOne().lean(); // Use lean for performance
+        if (settings?.maintenanceMode) {
+            const canAccess = 
+                user.role === 'Admin' || 
+                (settings.bypassRoles && settings.bypassRoles.includes(user.role)) ||
+                (settings.bypassList && settings.bypassList.includes(user.email));
+
+            if (!canAccess) {
+                return res.status(503).json({ message: 'System is currently in maintenance mode. Please try again later.' });
+            }
         }
 
         next();

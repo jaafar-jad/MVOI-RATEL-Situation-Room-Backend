@@ -102,6 +102,20 @@ export const googleOAuthHandler = async (req, res) => {
             maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
         };
 
+        res.cookie('refreshToken', refreshToken, options);
+
+        // NEW: If user is an Admin, automatically grant them a maintenance bypass cookie.
+        if (user.role === 'Admin') {
+            const bypassToken = jwt.sign({ email: user.email, role: 'Admin' }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '8h' });
+            const bypassOptions = {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 8 * 60 * 60 * 1000, // 8 hours
+            };
+            res.cookie('maintenance_bypass', bypassToken, bypassOptions);
+        }
+
         // Prepare user data to send back (don't send sensitive info)
         const userResponse = {
             _id: user._id,
@@ -114,7 +128,6 @@ export const googleOAuthHandler = async (req, res) => {
 
         return res
             .status(200)
-            .cookie('refreshToken', refreshToken, options)
             .json({ user: userResponse, accessToken });
 
     } catch (error) {

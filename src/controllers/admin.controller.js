@@ -5,6 +5,7 @@ import { sendEmail } from '../utils/email.js';
 import cloudinary from '../config/cloudinary.js';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import os from 'os-utils';
 import AppSettings from '../models/settings.model.js';
 
 /**
@@ -1269,7 +1270,7 @@ export const getAppSettings = async (req, res) => {
  * @access Admin only
  */
 export const updateAppSettings = async (req, res) => {
-    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView, maintenanceMode, maintenanceScheduledAt, maintenanceNotice } = req.body;
+    const { autoVerifyUsers, autoAcceptComplaints, allowPublicView, maintenanceMode, maintenanceScheduledAt, maintenanceNotice, bypassList, bypassRoles } = req.body;
 
     try {
         const updateData = {};
@@ -1279,6 +1280,8 @@ export const updateAppSettings = async (req, res) => {
         if (maintenanceMode !== undefined) updateData.maintenanceMode = maintenanceMode;
         if (maintenanceScheduledAt !== undefined) updateData.maintenanceScheduledAt = maintenanceScheduledAt;
         if (maintenanceNotice !== undefined) updateData.maintenanceNotice = maintenanceNotice;
+        if (bypassList !== undefined) updateData.bypassList = bypassList.map((email) => email.toLowerCase());
+        if (bypassRoles !== undefined) updateData.bypassRoles = bypassRoles;
 
         const settings = await AppSettings.findOneAndUpdate({}, updateData, {
             new: true,
@@ -1287,5 +1290,108 @@ export const updateAppSettings = async (req, res) => {
         res.status(200).json({ settings, message: 'Settings updated successfully.' });
     } catch (error) {
         res.status(500).json({ message: 'Error updating app settings.', error: error.message });
+    }
+};
+
+/**
+ * @description Get aggregated system logs (audit trail) for export.
+ * @route GET /api/v1/admin/logs
+ * @access Admin only
+ */
+export const getSystemLogs = async (req, res) => {
+    const { startDate, endDate } = req.query;
+
+    if (req.user.role !== 'Admin') {
+        return res.status(403).json({ message: 'Forbidden. Only Admins can access system logs.' });
+    }
+
+    try {
+        const dateFilter = {};
+        if (startDate) {
+            dateFilter.$gte = new Date(startDate);
+        }
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999); // Include the whole end day
+            dateFilter.$lte = end;
+        }
+
+        const complaintMatch = {};
+        if (Object.keys(dateFilter).length > 0) {
+            complaintMatch['statusHistory.timestamp'] = dateFilter;
+        }
+
+        // 1. Aggregate Complaint History
+        const complaintLogs = await Complaint.aggregate([
+            { $unwind: '$statusHistory' },
+            { $match: complaintMatch },
+            { $project: {
+                type: 'Complaint Update',
+                reference: '$caseRef',
+                action: '$statusHistory.status',
+                timestamp: '$statusHistory.timestamp',
+                details: '$statusHistory.notes',
+                _id: 0
+            }}
+        ]);
+
+        const userMatch = {};
+        if (Object.keys(dateFilter).length > 0) {
+            userMatch['verificationHistory.timestamp'] = dateFilter;
+        }
+
+        // 2. Aggregate User Verification History
+        const userLogs = await User.aggregate([
+            { $unwind: '$verificationHistory' },
+            { $match: userMatch },
+            { $project: {
+                type: 'Identity Verification',
+                reference: '$email',
+                action: '$verificationHistory.status',
+                timestamp: '$verificationHistory.timestamp',
+                details: '$verificationHistory.notes',
+                _id: 0
+            }}
+        ]);
+
+        // 3. Combine and Sort
+        const logs = [...complaintLogs, ...userLogs].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 2000);
+
+        return res.status(200).json({ logs });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error fetching system logs.', error: error.message });
+    }
+};
+
+/**
+ * @description Get current server CPU load.
+ * @route GET /api/v1/admin/server-load
+ * @access Admin only
+ */
+export const getServerLoad = async (req, res) => {
+    try {
+        os.cpuUsage((v) => {
+            return res.status(200).json({ serverLoad: (v * 100).toFixed(2) });
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error fetching server load.', error: error.message });
+    }
+};
+
+/**
+ * @description Search for users to add to the bypass list.
+ * @route GET /api/v1/admin/users/search-for-bypass
+ * @access Admin only
+ */
+export const searchUsersForBypass = async (req, res) => {
+    const { search } = req.query;
+    if (!search) {
+        return res.status(200).json({ users: [] });
+    }
+    try {
+        const users = await User.find({ $text: { $search: search } }).select('fullName email avatarUrl').limit(10);
+        return res.status(200).json({ users });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error searching for users.', error: error.message });
     }
 };
