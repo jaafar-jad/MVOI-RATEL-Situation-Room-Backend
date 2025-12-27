@@ -3,8 +3,6 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User from '../models/user.model.js';
 
-const client = new OAuth2Client(process.env.GOOGLE_OAUTH_CLIENT_ID);
-
 /**
  * Generates access and refresh tokens for a user.
  * @param {mongoose.Document} user - The user document from the database.
@@ -31,19 +29,52 @@ const generateTokens = (user) => {
  * Verifies the ID token, finds or creates a user, and sends back tokens.
  */
 export const googleOAuthHandler = async (req, res) => {
-    const { idToken } = req.body;
+    let { idToken, code } = req.body;
 
-    if (!idToken) {
-        return res.status(400).json({ message: 'ID token not provided.' });
+    // Fallback: If the frontend API wrapper sends the code in the 'idToken' field, detect it.
+    // ID Tokens are JWTs (contain dots). Auth codes are usually opaque strings (often start with 4/).
+    if (idToken && !code && !idToken.includes('.')) {
+        code = idToken;
     }
 
     try {
-        // 1. Verify the ID token from Google
-        const ticket = await client.verifyIdToken({
-            idToken,
-            audience: process.env.GOOGLE_OAUTH_CLIENT_ID,
-        });
-        const payload = ticket.getPayload();
+        // Debug: Ensure credentials exist before attempting exchange
+        if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+            console.error("❌ CRITICAL ERROR: Google OAuth credentials missing in .env file.");
+            return res.status(500).json({ message: "Server configuration error: Missing OAuth credentials." });
+        }
+
+        const client = new OAuth2Client(
+            process.env.GOOGLE_OAUTH_CLIENT_ID,
+            process.env.GOOGLE_OAUTH_CLIENT_SECRET
+        );
+
+        let payload;
+
+        if (code) {
+            // Exchange authorization code for tokens
+            // For 'redirect' flow, we must use the same redirect_uri as the frontend.
+            // We infer it from the Origin header or fallback to env.
+            const redirectUri = req.headers.origin || process.env.FRONTEND_URL;
+            
+            const { tokens } = await client.getToken({
+                code,
+                redirect_uri: redirectUri
+            });
+
+            // Verify the ID token returned from the exchange
+            const ticket = await client.verifyIdToken({
+                idToken: tokens.id_token,
+                audience: process.env.GOOGLE_OAUTH_CLIENT_ID,
+            });
+            payload = ticket.getPayload();
+        } else if (idToken) {
+            // Legacy/Popup flow: Verify the ID token directly
+            const ticket = await client.verifyIdToken({ idToken, audience: process.env.GOOGLE_OAUTH_CLIENT_ID });
+            payload = ticket.getPayload();
+        } else {
+            return res.status(400).json({ message: 'No authentication credentials provided.' });
+        }
 
         if (!payload) {
             return res.status(401).json({ message: 'Invalid Google token.' });
