@@ -247,7 +247,7 @@ export const verifyUser = async (req, res) => {
             }
             <p>Thank you for using our platform.</p>
         `;
-        await sendEmail(user.email, emailSubject, emailHtml);
+        sendEmail(user.email, emailSubject, emailHtml);
         // --- End of New Feature ---
         
         // Create an in-app notification for the user
@@ -318,7 +318,7 @@ export const vetCase = async (req, res) => {
                 <p><strong>Admin Notes:</strong> ${rejectionNoteContent}</p>
                 <p>Please review the notes and feel free to reach out if you have further questions.</p>
             `;
-            await sendEmail(complaint.complainant.email, emailSubject, emailHtml);
+            sendEmail(complaint.complainant.email, emailSubject, emailHtml);
 
             // Create an in-app notification with the rejection note
             await createNotification(
@@ -385,7 +385,7 @@ export const scheduleCase = async (req, res) => {
             </p>
             <p>Please log in to your dashboard to confirm these details. Your timely response is appreciated.</p>
         `;
-        await sendEmail(complainantEmail, emailSubject, emailHtml);
+        sendEmail(complainantEmail, emailSubject, emailHtml);
 
         // Create an in-app notification
         await createNotification(
@@ -397,6 +397,48 @@ export const scheduleCase = async (req, res) => {
         return res.status(200).json({ complaint, message: 'Case has been successfully scheduled.' });
     } catch (error) {
         return res.status(500).json({ message: 'Error scheduling case.', error: error.message });
+    }
+};
+
+/**
+ * @description Resend the scheduling invitation email.
+ * @route POST /api/v1/admin/resend-invitation/:caseId
+ * @access Admin/Staff
+ */
+export const resendInvitation = async (req, res) => {
+    try {
+        const complaint = await Complaint.findById(req.params.caseId).populate('complainant', 'email fullName');
+        if (!complaint) {
+            return res.status(404).json({ message: 'Complaint not found.' });
+        }
+
+        if (!complaint.invitation || !complaint.invitation.date) {
+            return res.status(400).json({ message: 'No invitation details found to resend.' });
+        }
+
+        const { date, time, location } = complaint.invitation;
+        const complainantEmail = complaint.complainant.email;
+        const complainantName = complaint.complainant.fullName;
+        const emailSubject = `REMINDER: Your Case Has Been Scheduled (${complaint.caseRef})`;
+        const emailHtml = `
+            <h1>Case Schedule Reminder</h1>
+            <p>Dear ${complainantName},</p>
+            <p>This is a reminder regarding your scheduled meeting for complaint Ref: <strong>${complaint.caseRef}</strong>.</p>
+            <h3>Invitation Details:</h3>
+            <p>
+                <strong>Date:</strong> ${new Date(date).toLocaleDateString()}<br>
+                <strong>Time:</strong> ${time}<br>
+                <strong>Location/Method:</strong> ${location}
+            </p>
+            <p>Please log in to your dashboard to confirm these details if you haven't already.</p>
+        `;
+        
+        // Non-blocking email send
+        sendEmail(complainantEmail, emailSubject, emailHtml);
+
+        return res.status(200).json({ message: 'Invitation email resent successfully.' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error resending invitation.', error: error.message });
     }
 };
 
@@ -565,7 +607,7 @@ export const closeCase = async (req, res) => {
     }
 
     try {
-        const complaint = await Complaint.findById(req.params.caseId).populate('complainant', 'fullName');
+        const complaint = await Complaint.findById(req.params.caseId).populate('complainant', 'fullName email');
         if (!complaint) {
             return res.status(404).json({ message: 'Complaint not found.' });
         }
@@ -580,7 +622,16 @@ export const closeCase = async (req, res) => {
             `Your case '${complaint.caseRef}' has been closed. Final status: ${resolutionStatus}.`
         );
 
-        // Optional: Send an email notification to the user that their case is closed.
+        // Send email notification (Non-blocking)
+        const emailSubject = `Case Closed: ${complaint.caseRef}`;
+        const emailHtml = `
+            <h1>Case Closed</h1>
+            <p>Dear ${complaint.complainant.fullName},</p>
+            <p>Your case (Ref: <strong>${complaint.caseRef}</strong>) has been closed.</p>
+            <p><strong>Final Status:</strong> ${resolutionStatus}</p>
+            <p>Thank you for using our platform.</p>
+        `;
+        sendEmail(complaint.complainant.email, emailSubject, emailHtml);
 
         return res.status(200).json({ complaint, message: `Case has been closed with status: ${resolutionStatus}` });
 

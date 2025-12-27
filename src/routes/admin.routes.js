@@ -28,6 +28,7 @@ import {
     updateAppSettings,
     getSystemLogs,
     getServerLoad,
+    resendInvitation,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -59,6 +60,7 @@ router.get('/complaints', getComplaints); // Renamed from /triage
 router.put('/verify-user/:userId', verifyUser);
 router.put('/vet-case/:caseId', vetCase);
 router.put('/schedule-case/:caseId', scheduleCase);
+router.post('/resend-invitation/:caseId', resendInvitation); // New route for resending invitation
 router.put('/invitation-response/:complaintId', respondToUserProposal);
 router.put('/revert-case/:caseId', revertCaseToPending); // New route to revert a case
 router.put('/close-case/:caseId', closeCase);
