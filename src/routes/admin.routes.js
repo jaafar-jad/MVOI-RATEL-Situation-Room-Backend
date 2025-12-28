@@ -29,6 +29,7 @@ import {
     getSystemLogs,
     getServerLoad,
     resendInvitation,
+    getNotificationAnalytics,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -41,6 +42,7 @@ router.get('/stats/complaints', getComplaintStats);
 router.get('/stats/users', getUserStats);
 router.get('/stats/daily-active-users', getDailyActiveUsers);
 router.get('/analytics', getAnalytics); // New comprehensive analytics endpoint
+router.get('/stats/notifications', getNotificationAnalytics);
 
 router.delete('/complaints/bulk', bulkDeleteComplaints); // New route for bulk deletion
 

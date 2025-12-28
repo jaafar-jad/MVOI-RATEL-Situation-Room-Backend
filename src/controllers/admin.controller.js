@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import os from 'os-utils';
 import AppSettings from '../models/settings.model.js';
+import NotificationInteraction from '../models/notificationInteraction.model.js';
 
 /**
  * @description Get key performance indicators (KPIs) for the admin dashboard.
@@ -1421,5 +1422,30 @@ export const getServerLoad = async (req, res) => {
         });
     } catch (error) {
         return res.status(500).json({ message: 'Error fetching server load.', error: error.message });
+    }
+};
+
+/**
+ * @description Get notification interaction analytics.
+ * @route GET /api/v1/admin/stats/notifications
+ * @access Admin only
+ */
+export const getNotificationAnalytics = async (req, res) => {
+    try {
+        const stats = await NotificationInteraction.aggregate([
+            { $group: { _id: '$action', count: { $sum: 1 } } }
+        ]);
+        
+        const formattedStats = {
+            view_details: 0,
+            snooze: 0,
+            dismiss: 0
+        };
+        
+        stats.forEach(s => { if (formattedStats[s._id] !== undefined) formattedStats[s._id] = s.count; });
+
+        return res.status(200).json({ stats: formattedStats });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error fetching notification analytics.', error: error.message });
     }
 };

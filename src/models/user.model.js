@@ -73,6 +73,14 @@ const userSchema = new mongoose.Schema(
         },
         statusHistory: [statusHistorySchema],
         verificationHistory: [verificationHistorySchema],
+        // Web Push Subscription Object
+        pushSubscription: {
+            endpoint: String,
+            keys: {
+                p256dh: String,
+                auth: String
+            }
+        }
     },
     { timestamps: true } // Automatically adds createdAt and updatedAt fields
 );
