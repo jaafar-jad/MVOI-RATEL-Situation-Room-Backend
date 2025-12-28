@@ -29,7 +29,7 @@ const generateTokens = (user) => {
  * Verifies the ID token, finds or creates a user, and sends back tokens.
  */
 export const googleOAuthHandler = async (req, res) => {
-    let { idToken, code } = req.body;
+    let { idToken, code, rememberMe } = req.body;
 
     // Fallback: If the frontend API wrapper sends the code in the 'idToken' field, detect it.
     // ID Tokens are JWTs (contain dots). Auth codes are usually opaque strings (often start with 4/).
@@ -126,11 +126,15 @@ export const googleOAuthHandler = async (req, res) => {
         await user.save({ validateBeforeSave: false }); // Skip validation to avoid requiring fields not provided by OAuth
 
         // 5. Send tokens to the client
+        const maxAge = rememberMe 
+            ? 30 * 24 * 60 * 60 * 1000 // 30 days
+            : 24 * 60 * 60 * 1000;     // 1 day
+
         const options = {
             httpOnly: true, // The cookie is not accessible via client-side JavaScript
             secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in production
-            sameSite: 'strict',
-            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
+            sameSite: 'lax',
+            maxAge: maxAge, 
         };
 
         res.cookie('refreshToken', refreshToken, options);
@@ -194,7 +198,7 @@ export const refreshAccessTokenHandler = async (req, res) => {
         const options = {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'lax',
             maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
         };
 
