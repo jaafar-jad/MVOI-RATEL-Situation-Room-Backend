@@ -14,6 +14,13 @@ const verificationHistorySchema = new mongoose.Schema({
     notes: String
 });
 
+const sessionSchema = new mongoose.Schema({
+    refreshToken: { type: String, required: true },
+    device: { type: String, default: 'Unknown Device' },
+    ip: { type: String },
+    lastActive: { type: Date, default: Date.now }
+}, { _id: true });
+
 const userSchema = new mongoose.Schema(
     {
         oauthId: {
@@ -60,10 +67,8 @@ const userSchema = new mongoose.Schema(
         avatarUrl: {
             type: String,
         },
-        refreshToken: {
-            type: String,
-            index: true,
-        },
+        // Support multiple active sessions
+        sessions: [sessionSchema],
         lastLogin: {
             type: Date,
         },

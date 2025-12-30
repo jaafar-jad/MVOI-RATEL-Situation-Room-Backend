@@ -6,9 +6,10 @@ import User from '../models/user.model.js';
 /**
  * Generates access and refresh tokens for a user.
  * @param {mongoose.Document} user - The user document from the database.
+ * @param {string} [refreshTokenExpiry] - Optional expiry for the refresh token.
  * @returns { {accessToken: string, refreshToken: string} }
  */
-const generateTokens = (user) => {
+const generateTokens = (user, refreshTokenExpiry) => {
     const accessToken = jwt.sign(
         { _id: user._id, role: user.role },
         process.env.ACCESS_TOKEN_SECRET,
@@ -18,7 +19,7 @@ const generateTokens = (user) => {
     const refreshToken = jwt.sign(
         { _id: user._id },
         process.env.REFRESH_TOKEN_SECRET,
-        { expiresIn: process.env.REFRESH_TOKEN_EXPIRY }
+        { expiresIn: refreshTokenExpiry || process.env.REFRESH_TOKEN_EXPIRY }
     );
 
     return { accessToken, refreshToken };
@@ -118,11 +119,21 @@ export const googleOAuthHandler = async (req, res) => {
         }
 
         // 3. Generate Access and Refresh Tokens
-        const { accessToken, refreshToken } = generateTokens(user);
+        // Ensure token lasts 30 days if rememberMe is true, matching the cookie
+        const tokenExpiry = rememberMe ? '30d' : '1d';
+        const { accessToken, refreshToken } = generateTokens(user, tokenExpiry);
 
         // 4. Hash and store the refresh token in the database
         const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-        user.refreshToken = hashedRefreshToken;
+        
+        // Add new session
+        user.sessions.push({
+            refreshToken: hashedRefreshToken,
+            device: req.headers['user-agent'] || 'Unknown Device',
+            ip: req.ip || req.connection.remoteAddress,
+            lastActive: new Date()
+        });
+
         await user.save({ validateBeforeSave: false }); // Skip validation to avoid requiring fields not provided by OAuth
 
         // 5. Send tokens to the client
@@ -133,7 +144,7 @@ export const googleOAuthHandler = async (req, res) => {
         const options = {
             httpOnly: true, // The cookie is not accessible via client-side JavaScript
             secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in production
-            sameSite: 'lax',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' required for cross-site refresh
             maxAge: maxAge, 
         };
 
@@ -178,27 +189,38 @@ export const refreshAccessTokenHandler = async (req, res) => {
             return res.status(401).json({ message: 'Invalid refresh token. User not found.' });
         }
 
-        // Verify that the incoming token matches the one stored in the DB
-        const isTokenValid = await bcrypt.compare(incomingRefreshToken, user.refreshToken);
+        // Find the session matching this refresh token
+        let sessionIndex = -1;
+        for (let i = 0; i < user.sessions.length; i++) {
+            const isMatch = await bcrypt.compare(incomingRefreshToken, user.sessions[i].refreshToken);
+            if (isMatch) {
+                sessionIndex = i;
+                break;
+            }
+        }
 
-        if (!isTokenValid) {
-            // This is a security risk - someone might be trying to use an old/stolen token.
-            // For enhanced security, you could invalidate all user's tokens here.
+        if (sessionIndex === -1) {
+            // Token reuse detection: If a valid JWT is presented but not found in DB, 
+            // it might be a reused token. We could invalidate all sessions here for security.
+            // For now, just reject.
             return res.status(401).json({ message: 'Invalid refresh token.' });
         }
 
         // Generate new tokens (token rotation)
-        const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
+        // Always extend to 30 days on refresh to keep the session alive
+        const { accessToken, refreshToken: newRefreshToken } = generateTokens(user, '30d');
 
         // Update the stored refresh token
         const hashedRefreshToken = await bcrypt.hash(newRefreshToken, 10);
-        user.refreshToken = hashedRefreshToken;
+        user.sessions[sessionIndex].refreshToken = hashedRefreshToken;
+        user.sessions[sessionIndex].lastActive = new Date();
+        
         await user.save({ validateBeforeSave: false });
 
         const options = {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
             maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
         };
 
@@ -218,16 +240,27 @@ export const refreshAccessTokenHandler = async (req, res) => {
  */
 export const logoutHandler = async (req, res) => {
     try {
-        // req.user is attached by the verifyJWT middleware
-        await User.findByIdAndUpdate(
-            req.user._id,
-            { $unset: { refreshToken: 1 } }, // Remove the refreshToken field
-            { new: true }
-        );
+        const incomingRefreshToken = req.cookies.refreshToken;
+        
+        if (incomingRefreshToken) {
+            const user = await User.findById(req.user._id);
+            if (user) {
+                // Remove the specific session associated with this token
+                // We need to check which hashed token matches
+                const newSessions = [];
+                for (const session of user.sessions) {
+                    const match = await bcrypt.compare(incomingRefreshToken, session.refreshToken);
+                    if (!match) newSessions.push(session);
+                }
+                user.sessions = newSessions;
+                await user.save({ validateBeforeSave: false });
+            }
+        }
 
         const options = {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         };
 
         return res.status(200).clearCookie('refreshToken', options).json({ message: 'User logged out successfully.' });

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCurrentUser, updateUserProfile, uploadIdDocument, revokeIdSubmission } from '../controllers/user.controller.js';
+import { getCurrentUser, updateUserProfile, uploadIdDocument, revokeIdSubmission, getActiveSessions, revokeSession } from '../controllers/user.controller.js';
 import { verifyJWT } from '../middleware/auth.middleware.js';
 import { uploadIdToCloudinary } from '../middleware/multer.middleware.js';
 
@@ -17,5 +17,8 @@ router.route('/upload-id')
 
 router.route('/revoke-id')
     .delete(revokeIdSubmission);
+
+router.get('/sessions', getActiveSessions);
+router.delete('/sessions/:sessionId', revokeSession);
 
 export default router;

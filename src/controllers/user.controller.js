@@ -99,6 +99,42 @@ export const uploadIdDocument = async (req, res) => {
 };
 
 /**
+ * @description Get active sessions for the user.
+ * @route GET /api/v1/users/sessions
+ * @access Private
+ */
+export const getActiveSessions = async (req, res) => {
+    try {
+        // Return sessions but exclude the sensitive refreshToken hash
+        const sessions = req.user.sessions.map(s => ({
+            _id: s._id,
+            device: s.device,
+            ip: s.ip,
+            lastActive: s.lastActive
+        }));
+        return res.status(200).json({ sessions });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error fetching sessions.', error: error.message });
+    }
+};
+
+/**
+ * @description Revoke a specific session.
+ * @route DELETE /api/v1/users/sessions/:sessionId
+ * @access Private
+ */
+export const revokeSession = async (req, res) => {
+    try {
+        await User.findByIdAndUpdate(req.user._id, {
+            $pull: { sessions: { _id: req.params.sessionId } }
+        });
+        return res.status(200).json({ message: 'Session revoked successfully.' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Error revoking session.', error: error.message });
+    }
+};
+
+/**
  * @description Revoke a pending ID submission.
  * @route DELETE /api/v1/users/revoke-id
  * @access Private
